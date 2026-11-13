@@ -8,10 +8,12 @@ import {
   Inject,
   Res,
 } from "@nestjs/common";
+import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { Response } from "express";
 import { SQS_CLIENT } from "../../infrastructure/messaging/sqs/sqs-client.provider";
 import { Public } from "../decorators/public.decorator";
 
+@ApiTags("Health & Observability")
 @Public()
 @Controller("health")
 export class HealthController {
@@ -23,6 +25,11 @@ export class HealthController {
 
   @Get("live")
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Liveness probe para orquestrador (Docker / Kubernetes)",
+    description: "Retorna 200 OK se o processo da aplicação estiver ativo.",
+  })
+  @ApiResponse({ status: 200, description: "Aplicação ativa." })
   public live() {
     return {
       status: "alive",
@@ -31,6 +38,13 @@ export class HealthController {
   }
 
   @Get("ready")
+  @ApiOperation({
+    summary: "Readiness probe para orquestrador e load balancer",
+    description:
+      "Retorna 200 OK se PostgreSQL e AWS SQS estiverem com conectividade ativa.",
+  })
+  @ApiResponse({ status: 200, description: "Todos os serviços saudáveis." })
+  @ApiResponse({ status: 503, description: "Serviço dependente indisponível." })
   public async ready(@Res() res: Response) {
     const checks: Record<string, string> = {
       database: "unknown",

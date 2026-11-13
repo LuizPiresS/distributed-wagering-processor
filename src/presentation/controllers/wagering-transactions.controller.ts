@@ -12,6 +12,14 @@ import {
   Req,
   Res,
 } from "@nestjs/common";
+import {
+  ApiBody,
+  ApiHeader,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from "@nestjs/swagger";
 import type { Request, Response } from "express";
 import { ProcessWagerTransactionDto } from "../../application/dto/process-wager.dto";
 import {
@@ -29,6 +37,7 @@ import {
   WagerTransactionStatus,
 } from "../../domain";
 
+@ApiTags("Wagering Transactions")
 @Controller("wagering/transactions")
 export class WageringTransactionsController {
   constructor(
@@ -37,6 +46,47 @@ export class WageringTransactionsController {
   ) {}
 
   @Post()
+  @ApiOperation({
+    summary: "Submeter transação de aposta (BET, WIN, LOSS, REFUND, ROLLBACK)",
+    description:
+      "Processa operações financeiras com garantia estrita de idempotência (header Idempotency-Key obrigatório), lock pessimista por carteira e publicação transacional no Outbox.",
+  })
+  @ApiHeader({
+    name: "Idempotency-Key",
+    description:
+      "Chave única universal de idempotência (UUIDv4) para prevenir double-spending e replay fraudulento",
+    required: true,
+    example: "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+  })
+  @ApiBody({ type: ProcessWagerTransactionDto })
+  @ApiResponse({
+    status: 201,
+    description: "Transação financeira criada e processada com sucesso.",
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      "Replay idempotente idêntico devolvido sem reprocessamento (idempotentReplay: true).",
+  })
+  @ApiResponse({
+    status: 202,
+    description:
+      "Reversão fora de ordem aceita e estacionada aguardando o BET original (status: PENDING_REFERENCE).",
+  })
+  @ApiResponse({
+    status: 400,
+    description: "Payload inválido, moeda divergente ou violação de esquema.",
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      "Conflito de idempotência: chave já utilizada com payload comercial divergente.",
+  })
+  @ApiResponse({
+    status: 422,
+    description:
+      "Regra financeira violada (saldo insuficiente, rollback causador de saldo negativo).",
+  })
   public async submitTransaction(
     @Headers("idempotency-key") idempotencyKeyHeader: string | undefined,
     @Body() body: any,
@@ -146,6 +196,18 @@ export class WageringTransactionsController {
   }
 
   @Get(":transactionId")
+  @ApiOperation({
+    summary: "Consultar transação de aposta pelo ID interno",
+    description:
+      "Retorna os detalhes, status e histórico da transação registrada no processador.",
+  })
+  @ApiParam({
+    name: "transactionId",
+    description: "UUID da transação interna",
+    example: "45f47285-b9b5-410e-8f24-db0cbff51307",
+  })
+  @ApiResponse({ status: 200, description: "Transação encontrada." })
+  @ApiResponse({ status: 404, description: "Transação não encontrada." })
   public async getTransaction(@Param("transactionId") transactionId: string) {
     try {
       return await this.getWagerTransactionUseCase.execute(transactionId);

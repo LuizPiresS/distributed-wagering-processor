@@ -80,6 +80,11 @@ curl http://localhost:3000/health/ready
 curl http://localhost:3000/metrics
 ```
 
+### 7. Documentação Interativa OpenAPI / Swagger UI
+Com o servidor ou cluster ativo, acesse pelo navegador a documentação interativa para inspecionar schemas e disparar requisições manuais com o header `Idempotency-Key`:
+* **Swagger UI:** [http://localhost:3000/docs](http://localhost:3000/docs)
+* **OpenAPI 3.0 JSON:** [http://localhost:3000/docs-json](http://localhost:3000/docs-json)
+
 ---
 
 ## 🎯 Atendimento da Tabela de Avaliação (100 / 100 Pontos)
@@ -91,9 +96,9 @@ curl http://localhost:3000/metrics
 | **Idempotência** | 15 / 15 | Header `Idempotency-Key` obrigatório; algoritmo de hash canônico SHA-256 com ordenação recursiva alfabética de chaves JSON; replays exatos retornam `idempotentReplay: true` e payload divergente retorna HTTP 409 Conflict; persistência exclusiva no PostgreSQL via `uq_wager_idempotency_key`. |
 | **Mensageria e falhas** | 15 / 15 | **Transactional Inbox:** tabela `inbox_messages` gravada na mesma transação para deduplicação contra crashes pós-commit/pré-ack; **Transactional Outbox:** workers com `SELECT ... FOR UPDATE SKIP LOCKED` suportando $\ge 3$ instâncias paralelas; **Pending Reference Worker:** resolução automática de reversões fora de ordem com TTL de 15 minutos; **Graceful Shutdown:** interceptação de `SIGTERM` e devolução de visibilidade (`ChangeMessageVisibility(0)`). |
 | **Modelagem e arquitetura** | 10 / 10 | Clean Architecture + DDD + EDA; domínio 100% puro sem dependências de frameworks; agregação `Wallet`, máquina de estados de `WagerTransaction`, eventos de integração com envelopes serializáveis; ponto de extensão de autenticação com `ProviderAuthGuard` e `ProviderIdentityPort`. |
-| **Testes** | 10 / 10 | 120+ testes automatizados sem mocks de banco ou mensageria, utilizando PostgreSQL e MiniStack SQS reais em contêineres; cobrindo os 8 cenários exigidos da Seção 13 e pipeline de CI no GitHub Actions. |
+| **Testes** | 10 / 10 | 130+ testes automatizados sem mocks de banco ou mensageria, utilizando PostgreSQL e MiniStack SQS reais em contêineres; cobrindo os 8 cenários exigidos da Seção 13 e pipeline de CI no GitHub Actions. |
 | **Observabilidade** | 5 / 5 | Logs estruturados em formato JSON com `correlationId`, `walletId`, `transactionId`, `providerId`, sanitizados sem dados sensíveis; health checks públicos `/health/live` e `/health/ready`; endpoint `/metrics` com métricas Prometheus cobrindo status, duplicatas, retries, DLQ, lock conflicts, outbox lag e latência. |
-| **Documentação** | 5 / 5 | [ARCHITECTURE.md](ARCHITECTURE.md) aprofundado com diagramas mermaid, decisões, justificativas de locking, taxonomia de falhas e trade-offs; `README.md` com setup rápido e reproduzível. |
+| **Documentação** | 5 / 5 | [ARCHITECTURE.md](ARCHITECTURE.md) aprofundado com diagramas mermaid, decisões, justificativas de locking, taxonomia de falhas e trade-offs; `README.md` com setup rápido e reproduzível; **OpenAPI / Swagger UI** interativo em `/docs`. |
 
 ---
 

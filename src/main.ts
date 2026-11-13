@@ -5,6 +5,7 @@ import { AppModule } from "./app.module";
 import { OutboxPublisherWorker } from "./infrastructure/messaging/outbox/outbox-publisher.worker";
 import { SqsConsumerService } from "./infrastructure/messaging/sqs/sqs-consumer.service";
 import { PendingReferenceWorker } from "./infrastructure/messaging/workers/pending-reference.worker";
+import { setupSwagger } from "./setup-swagger";
 
 function startWorkers(app: INestApplicationContext) {
   console.log("Background workers enabled (Outbox, SQS Consumer, Pending References).");
@@ -63,9 +64,12 @@ async function bootstrap() {
     const app = await NestFactory.create(AppModule);
     app.enableShutdownHooks();
 
+    setupSwagger(app);
+
     const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
     await app.listen(port);
     console.log(`Wagering Processor HTTP application is running on port: ${port}`);
+    console.log(`Interactive OpenAPI Swagger UI available at: http://localhost:${port}/docs`);
 
     if (enableWorkers) {
       startWorkers(app);
