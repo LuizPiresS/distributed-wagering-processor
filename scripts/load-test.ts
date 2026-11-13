@@ -44,11 +44,12 @@ async function runLoadTest() {
     console.log(`Servidor de teste ativo em: ${baseUrl}`);
   }
 
-  // 1. Setup inicial de 5 carteiras
-  console.log("\n📦 Provisionando 5 carteiras para o teste...");
+  // 1. Setup inicial de carteiras
+  const WALLETS_COUNT = process.env.LOAD_WALLETS ? parseInt(process.env.LOAD_WALLETS, 10) : 5;
+  console.log(`\n📦 Provisionando ${WALLETS_COUNT} carteiras para o teste...`);
   const wallets: { id: string; playerId: string }[] = [];
 
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i <= WALLETS_COUNT; i++) {
     const playerId = uuidv4();
     const res = await fetch(`${baseUrl}/wallets`, {
       method: "POST",
@@ -62,11 +63,11 @@ async function runLoadTest() {
     wallets.push({ id: data.id, playerId });
   }
 
-  console.log(`✅ 5 carteiras criadas com saldo inicial de 1000.00 BRL cada.`);
+  console.log(`✅ ${WALLETS_COUNT} carteiras criadas com saldo inicial de 1000.00 BRL cada.`);
 
-  // 2. Execução da carga: 150 requisições concorrentes
-  const TOTAL_REQUESTS = 150;
-  const CONCURRENCY = 15;
+  // 2. Execução da carga
+  const TOTAL_REQUESTS = process.env.LOAD_REQUESTS ? parseInt(process.env.LOAD_REQUESTS, 10) : 150;
+  const CONCURRENCY = process.env.LOAD_CONCURRENCY ? parseInt(process.env.LOAD_CONCURRENCY, 10) : 15;
   console.log(
     `\n🚀 Disparando ${TOTAL_REQUESTS} operações concorrentes (${CONCURRENCY} workers em paralelo)...`,
   );
