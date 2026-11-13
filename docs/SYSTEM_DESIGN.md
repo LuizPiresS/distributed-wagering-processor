@@ -3,6 +3,7 @@
 > **Especificação Técnica de Alto Nível: Topologia Distribuída, Concorrência, Resiliência e Estratégia de Escala**
 > **Serviço:** Distributed Wagering Processor
 > **Stack:** NestJS, Bun 1.x, PostgreSQL 16, AWS SQS FIFO, MikroORM
+> **Documentos Relacionados:** [ARCHITECTURE.md](../ARCHITECTURE.md) | [docs/BENCHMARK_REPORT.md](BENCHMARK_REPORT.md) | [README.md](../README.md)
 
 ---
 
@@ -54,16 +55,20 @@ flowchart TB
     end
 
     subgraph Edge["Camada de Borda & Ingress"]
-        GW["API Gateway / WAF\n(mTLS + Validação HMAC)"]
+        GW["Nginx Load Balancer\n(Round-Robin porta 3000 / Swagger em /docs)"]
     end
 
-    subgraph Service["Serviço Distribuído (NestJS + Bun 1.x)"]
-        API1["Instância Pod 1\n(Stateless HTTP + SQS Consumer)"]
-        API2["Instância Pod 2\n(Stateless HTTP + SQS Consumer)"]
-        API3["Instância Pod N\n(Stateless HTTP + SQS Consumer)"]
+    subgraph Service["Cluster Multi-Tier (12-Factor App)"]
+        subgraph HttpTier["Tier HTTP (ENABLE_HTTP=true, WORKERS=false)"]
+            API1["Pod API 1\n(Stateless REST)"]
+            API2["Pod API 2\n(Stateless REST)"]
+            API3["Pod API 3\n(Stateless REST)"]
+        end
 
-        W_Outbox["Outbox Publisher Worker\n(SKIP LOCKED)"]
-        W_Pending["Pending Reference Worker\n(Exponential Backoff + TTL)"]
+        subgraph WorkerTier["Tier Workers (ENABLE_HTTP=false, WORKERS=true)"]
+            W1["Worker Pod 1\n(Outbox, Inbox, SQS Consumer)"]
+            W2["Worker Pod 2\n(Outbox, Inbox, SQS Consumer)"]
+        end
     end
 
     subgraph Broker["Mensageria AWS SQS (LocalStack / MiniStack)"]
@@ -85,20 +90,21 @@ flowchart TB
     External -->|Mensagens de Aposta| SQS_FIFO
     GW --> API1 & API2 & API3
 
-    SQS_FIFO -->|Poll Batch| API1 & API2 & API3
+    SQS_FIFO -->|Poll Batch| W1 & W2
     SQS_FIFO -.->|3 falhas| SQS_DLQ
 
     API1 & API2 & API3 --> PG_POOL
-    W_Outbox & W_Pending --> PG_POOL
+    W1 & W2 --> PG_POOL
     PG_POOL --> PG_PRIMARY
     PG_PRIMARY -.->|Replicação Streaming| PG_REPLICA
 
-    W_Outbox -->|Publica Eventos Confirmados| SQS_FIFO
-    API1 & API2 & API3 -.->|Expõe Métricas| PROM
+    W1 & W2 -->|Publica Eventos Confirmados| SQS_FIFO
+    API1 & API2 & API3 -.->|Expõe Métricas /metrics| PROM
 ```
 
 ### Componentes Chave da Topologia
-- **Instâncias Stateless (Horizontalmente Escaláveis):** Os nós de aplicação não retêm estado em memória; qualquer réplica atende qualquer provedor ou carteira.
+- **Desacoplamento de Tiers (`app` vs `worker`):** Réplicas dedicadas a HTTP não sofrem contenção do Event Loop com I/O de workers assíncronos.
+- **Gateway Nginx:** Roteamento de entrada na porta 3000 com documentação interativa OpenAPI / Swagger UI em `/docs`.
 - **PgBouncer:** Camada de pooling de conexões que preserva o PostgreSQL contra exaustão de conexões durante rajadas de tráfego.
 - **Duplo Canal de Entrada:** Suporte integrado a chamadas síncronas (REST) e assíncronas (SQS FIFO), ambas convergindo para o mesmo caso de uso transacional.
 
@@ -140,7 +146,7 @@ sequenceDiagram
         Note over UC: 4. Avalia regras de Domínio (saldo, moeda, referências)
         UC->>UC: wallet.debit(money) -> balanceBefore, balanceAfter
         UC->>DB: INSERT INTO wager_transactions (PROCESSED)
-        UC->>DB: INSERT INTO wallet_ledger_entries (DEBIT, imutável)
+        UC->>DB: INSERT INTO wallet_ledger_entries (DEBIT, imutável, counterparty_account)
         UC->>DB: UPDATE wallets SET balance = balanceAfter, version = version + 1
         UC->>DB: INSERT INTO outbox_messages (WalletBalanceChanged, WagerProcessed)
         UC->>DB: COMMIT (Atômico: Carteira + Ledger + Outbox + Transação)
@@ -231,6 +237,7 @@ classDiagram
         +NUMERIC amount
         +NUMERIC balance_before
         +NUMERIC balance_after
+        +VARCHAR counterparty_account
         +TIMESTAMPTZ created_at
         -- Constraints & Rules --
         chk_ledger_amount_positive : amount > 0.00
@@ -326,23 +333,26 @@ flowchart TD
 4. `wagering_dlq_messages_total` (Mensagens direcionadas à DLQ);
 5. `wagering_lock_conflicts_total` (Contenções ou esperas de lock);
 6. `wagering_outbox_lag_seconds` (Gauge de atraso da outbox);
-7. `wagering_processing_latency_ms` (Sumário com percentis $p50$, $p95$, $p99$).
+7. `wagering_processing_latency_ms` (Sumário com percentis $p50$, $p90$, $p95$, $p99$).
 
 ### Evidências Experimentais Obtidas no Projeto
 
 ```text
-┌───────────────────────────────────────────────┬────────────────────────────┐
-│ Validação Realizada                           │ Resultado Obtido           │
-├───────────────────────────────────────────────┼────────────────────────────┤
-│ Suíte de Testes Automatizados (bun test)      │ 131 testes / 100% aprovado │
-│ Teste End-to-End no Servidor (test:e2e)       │ 19 de 19 passos aprovados  │
-│ Teste de Carga Local (test:load)              │ 182.06 RPS (0% de erro)    │
-│ Latência Mediana (p50) sob Carga Concorrente  │ 51.25 ms                   │
-│ Latência de Pico (p99) sob Carga Concorrente  │ 162.55 ms                  │
-│ Teste de Caos & Vetores de Ataque (test:chaos)│ 6 de 6 ataques bloqueados  │
-│ Divergências Contábeis Detectadas             │ 0.00 BRL (100% consistente)│
-└───────────────────────────────────────────────┴────────────────────────────┘
+┌───────────────────────────────────────────────┬────────────────────────────────────────────┐
+│ Validação Realizada                           │ Resultado Obtido                           │
+├───────────────────────────────────────────────┼────────────────────────────────────────────┤
+│ Suíte de Testes Automatizados (bun test)      │ 136 testes / 100% aprovado (24 suítes)     │
+│ Teste End-to-End no Servidor (test:e2e)       │ 19 de 19 passos aprovados                  │
+│ Teste de Carga em Larga Escala (test:load)    │ 473.40 RPS (0% de erro / 3.000 requisições)│
+│ Latência Mediana (p50) sob Carga Máxima       │ 85.47 ms (57-61 ms em média escala)        │
+│ Latência de Pico (p99) sob Carga Máxima       │ 129.86 ms                                  │
+│ Teste de Caos & Vetores de Ataque (test:chaos)│ 10 de 10 ataques bloqueados (Zero falhas)  │
+│ Divergências Contábeis Individuais            │ 0.00 BRL (100% consistente)                │
+│ Balancete Global de Partidas Dobradas         │ Δ = 0.00 BRL (8.621 transações auditadas)  │
+└───────────────────────────────────────────────┴────────────────────────────────────────────┘
 ```
+
+> Para a metodologia completa, gráficos de percentil e relatório de estresse, consulte o [docs/BENCHMARK_REPORT.md](BENCHMARK_REPORT.md).
 
 ---
 
@@ -356,10 +366,16 @@ flowchart TD
 3. **Autenticação Desacoplada via Porta:**
    - *Decisão:* Criado o ponto de extensão limpo `ProviderIdentityPort` e `ProviderAuthGuard`, desacoplando a integração com IdPs externos (Keycloak, Zitadel, Cognito) do núcleo de domínio financeiro.
 
+### Diferenciais Implementados & Comprovados
+- **Ledger de Partidas Dobradas (*Double-Entry Bookkeeping*):** Implementado no PostgreSQL com contas de contrapartida (`HOUSE_HOLDING`, `HOUSE_EXPENSE`, `SETTLEMENT_ESCROW`) e balancete global `/accounting/trial-balance` ($\Delta = 0.00$) com zero lock centralizado.
+- **Experimento de Carga & Benchmark Formal:** Sustentação de **473.40 RPS** com 0% de erro e relatório executivo em [docs/BENCHMARK_REPORT.md](BENCHMARK_REPORT.md).
+- **Suíte de Caos e Defesa Ativa:** 10 vetores de estresse ativo incluindo stampede de 100 chamadas simultâneas, double-spending race, double refund e desordem temporal via `bun run test:chaos`.
+- **OpenAPI / Swagger UI Interativo:** Documentação visual e tipada em `/docs`.
+
 ### Próximos Passos de Produção ("Day 2 Operations")
 - **WAF & mTLS:** Configuração de mTLS nos endpoints com certificados X.509 por provedor de jogos.
 - **OpenTelemetry Tracing:** Adição de trace spans distribuídos unificando logs de gateway, NestJS e banco de dados.
-- **Double-Entry Bookkeeping Completo:** Expansão do ledger para partidas dobradas com contas de contrapartida da casa (*House Vault*).
+- **PgBouncer Dedicado:** Posicionamento de PgBouncer em modo Transaction Pooling para suportar centenas de réplicas de pods em 50.000+ RPS.
 
 ---
 
