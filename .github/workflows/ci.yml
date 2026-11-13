@@ -20,6 +20,9 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Verify formatting and whitespace
+        run: git diff --check
+
       - name: Start containers (PostgreSQL 16 & MiniStack SQS)
         run: docker compose up -d postgres ministack
 
@@ -39,11 +42,22 @@ jobs:
       - name: Execute reversible MikroORM migrations
         run: bun run migration:up
 
+      - name: Verify migration rollback and re-apply
+        run: |
+          bun run migration:down
+          bun run migration:up
+
       - name: Strict TypeScript compilation check
         run: bun run build
+
+      - name: Build Docker multi-tier image
+        run: docker compose build
 
       - name: Run all unit and integration tests
         run: bun run test:all
 
       - name: Run 8 real concurrency chaos scenarios
         run: bun run test:concurrency
+
+      - name: Run baseline load test and trial balance audit
+        run: bun run test:load
