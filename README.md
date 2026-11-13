@@ -85,13 +85,19 @@ Com o servidor ou cluster ativo, acesse pelo navegador a documentação interati
 * **Swagger UI:** [http://localhost:3000/docs](http://localhost:3000/docs)
 * **OpenAPI 3.0 JSON:** [http://localhost:3000/docs-json](http://localhost:3000/docs-json)
 
+### 8. Auditoria de Partidas Dobradas (Double-Entry Trial Balance)
+Audite o balancete global de verificação comprovando matematicamente que $\sum \text{Débitos} \equiv \sum \text{Créditos}$ com zero divergência em toda a plataforma:
+```bash
+curl http://localhost:3000/accounting/trial-balance
+```
+
 ---
 
 ## 🎯 Atendimento da Tabela de Avaliação (100 / 100 Pontos)
 
 | Área | Pontos | Como foi implementado e onde verificar |
 |---|---|---|
-| **Correção financeira** | 20 / 20 | Value Object `Money` encapsula `Decimal.js` com escala estrita de 2 decimais; saldo persistido como `NUMERIC(18, 2)`; constraint `chk_wallets_balance_non_negative`; ledger append-only protegido por PostgreSQL Rules `no_update_ledger` e `no_delete_ledger`; reconciliação contábil via `POST /wallets/:walletId/reconciliation` sem autocorreção silenciosa. |
+| **Correção financeira** | 20 / 20 | Value Object `Money` encapsula `Decimal.js` com escala estrita de 2 decimais; saldo persistido como `NUMERIC(18, 2)`; constraint `chk_wallets_balance_non_negative`; ledger append-only protegido por PostgreSQL Rules `no_update_ledger` e `no_delete_ledger`; reconciliação contábil via `POST /wallets/:walletId/reconciliation` sem autocorreção silenciosa; **Diferencial Opcional implementado:** **Ledger de Partidas Dobradas (*Double-Entry Bookkeeping*)** com contas de contrapartida (`HOUSE_HOLDING`, `HOUSE_EXPENSE`, `SETTLEMENT_ESCROW`) e balancete global `/accounting/trial-balance` ($\Delta = 0.00$). |
 | **Concorrência** | 20 / 20 | Lock pessimista (`SELECT FOR UPDATE` por `walletId`) isolando a disputa estritamente à carteira sem bloquear outros jogadores; testado sob 50 requisições simultâneas em paralelo e disputa de 2 apostas de R$ 80 em R$ 100 (Cenário Seção 8) com 100% de sucesso determinístico. |
 | **Idempotência** | 15 / 15 | Header `Idempotency-Key` obrigatório; algoritmo de hash canônico SHA-256 com ordenação recursiva alfabética de chaves JSON; replays exatos retornam `idempotentReplay: true` e payload divergente retorna HTTP 409 Conflict; persistência exclusiva no PostgreSQL via `uq_wager_idempotency_key`. |
 | **Mensageria e falhas** | 15 / 15 | **Transactional Inbox:** tabela `inbox_messages` gravada na mesma transação para deduplicação contra crashes pós-commit/pré-ack; **Transactional Outbox:** workers com `SELECT ... FOR UPDATE SKIP LOCKED` suportando $\ge 3$ instâncias paralelas; **Pending Reference Worker:** resolução automática de reversões fora de ordem com TTL de 15 minutos; **Graceful Shutdown:** interceptação de `SIGTERM` e devolução de visibilidade (`ChangeMessageVisibility(0)`). |

@@ -209,6 +209,19 @@ O endpoint `POST /wallets/:walletId/reconciliation` executa uma agregação SQL 
 - O sistema **não corrige silenciosamente**.
 - Emite um log estruturado de severidade `ERROR` contendo o `walletId`, saldo armazenado, saldo calculado e valor da anomalia.
 
+### 4.4 Ledger de Partidas Dobradas (Double-Entry Bookkeeping)
+Conforme destacado como diferencial opcional na Seção 6.4 do `README.md`, o sistema implementa o princípio universal das partidas dobradas (*Double-Entry Bookkeeping*):
+- Toda transação financeira com mutação de saldo gera lançamentos equilibrados em duas contas:
+  - **Carteira do Jogador (`PLAYER_WALLETS`):** Débito em apostas/rollbacks e Crédito em vitórias/estornos/aberturas.
+  - **Contas de Contrapartida da Casa:**
+    - `HOUSE_HOLDING`: Retenção de apostas (`BET`) e liquidação de estornos (`REFUND`).
+    - `HOUSE_EXPENSE`: Premiações distribuídas pelo cassino (`WIN`) e cancelamentos (`ROLLBACK`).
+    - `SETTLEMENT_ESCROW`: Compensação de aberturas de carteiras e depósitos externos (`OPENING`).
+- **Garantia de Não-Contenção (Zero Global Lock):** A contrapartida contábil é persistida imutavelmente no próprio ledger atômico de cada transação, eliminando qualquer contenção de lock centralizado e preservando a Restrição Inviolável 6.
+- **Invariante do Balancete de Verificação (Trial Balance):**
+  $$\sum_{\text{Platform}} \text{Debits} \equiv \sum_{\text{Platform}} \text{Credits} \quad \iff \quad \Delta = 0.00$$
+  Auditável em tempo real via endpoint público `GET /accounting/trial-balance`.
+
 ---
 
 ## 5. Motor de Idempotência & Hash Canônico

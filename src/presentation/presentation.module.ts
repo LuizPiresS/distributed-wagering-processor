@@ -12,6 +12,7 @@ import {
 import { DatabaseModule } from "../infrastructure/database/database.module";
 import { MessagingModule } from "../infrastructure/messaging/messaging.module";
 import { ObservabilityModule } from "../infrastructure/observability/observability.module";
+import { AccountingController } from "./controllers/accounting.controller";
 import { HealthController } from "./controllers/health.controller";
 import { MetricsController } from "./controllers/metrics.controller";
 import { ProviderWageringTransactionsController } from "./controllers/provider-wagering-transactions.controller";
@@ -33,6 +34,7 @@ import { CorrelationIdMiddleware } from "./middleware/correlation-id.middleware"
     WageringTransactionsController,
     ProviderWageringTransactionsController,
     ReconciliationController,
+    AccountingController,
     HealthController,
     MetricsController,
   ],

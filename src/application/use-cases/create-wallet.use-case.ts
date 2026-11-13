@@ -2,6 +2,7 @@ import { EntityManager } from "@mikro-orm/postgresql";
 import { Injectable } from "@nestjs/common";
 import { v4 as uuidv4 } from "uuid";
 import {
+  CounterpartyAccount,
   CurrencyCode,
   LedgerDirection,
   Money,
@@ -80,6 +81,7 @@ export class CreateWalletUseCase {
           money: initialMoney,
           balanceBefore: Money.zero(initialMoney.currency as CurrencyCode),
           balanceAfter: initialMoney,
+          counterpartyAccount: CounterpartyAccount.SettlementEscrow,
           createdAt: wallet.createdAt,
         });
 

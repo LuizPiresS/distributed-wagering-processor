@@ -87,6 +87,7 @@ export class GetWalletLedgerUseCase {
       amount: entry.amount.toJSON(),
       balanceBefore: entry.balanceBefore.toJSON(),
       balanceAfter: entry.balanceAfter.toJSON(),
+      counterpartyAccount: entry.counterpartyAccount,
       createdAt: entry.createdAt.toISOString(),
     }));
 

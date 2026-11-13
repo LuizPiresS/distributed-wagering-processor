@@ -14,6 +14,7 @@ export * from "./enums/failure-code.enum";
 export * from "./enums/transaction-kind.enum";
 export * from "./enums/transaction-status.enum";
 export * from "./enums/ledger-direction.enum";
+export * from "./enums/counterparty-account.enum";
 
 // Errors
 export * from "./errors/domain.error";

@@ -70,3 +70,4 @@ describe("OpenAPI & Swagger UI Integration Tests", () => {
     expect(headerParam.required).toBe(true);
   });
 });
+

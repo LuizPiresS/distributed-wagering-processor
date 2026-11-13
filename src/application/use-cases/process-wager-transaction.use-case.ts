@@ -3,6 +3,7 @@ import { EntityManager } from "@mikro-orm/postgresql";
 import { Injectable, Optional } from "@nestjs/common";
 import { v4 as uuidv4 } from "uuid";
 import {
+  CounterpartyAccount,
   CurrencyMismatchError,
   FailureCode,
   IntegrationEvent,
@@ -225,6 +226,7 @@ export class ProcessWagerTransactionUseCase {
               money: transactionMoney,
               balanceBefore: mutation.balanceBefore,
               balanceAfter: mutation.balanceAfter,
+              counterpartyAccount: CounterpartyAccount.HouseHolding,
             });
 
             outboxEvents.push(
@@ -279,6 +281,7 @@ export class ProcessWagerTransactionUseCase {
             money: transactionMoney,
             balanceBefore: mutation.balanceBefore,
             balanceAfter: mutation.balanceAfter,
+            counterpartyAccount: CounterpartyAccount.HouseExpense,
           });
 
           outboxEvents.push(
@@ -434,6 +437,7 @@ export class ProcessWagerTransactionUseCase {
               money: transactionMoney,
               balanceBefore: mutation.balanceBefore,
               balanceAfter: mutation.balanceAfter,
+              counterpartyAccount: CounterpartyAccount.HouseHolding,
             });
 
             outboxEvents.push(
@@ -512,6 +516,7 @@ export class ProcessWagerTransactionUseCase {
                 money: transactionMoney,
                 balanceBefore: mutation.balanceBefore,
                 balanceAfter: mutation.balanceAfter,
+                counterpartyAccount: CounterpartyAccount.HouseExpense,
               });
 
               outboxEvents.push(

@@ -14,6 +14,7 @@ export interface WalletLedgerItemDto {
   readonly amount: MoneyProps;
   readonly balanceBefore: MoneyProps;
   readonly balanceAfter: MoneyProps;
+  readonly counterpartyAccount?: string;
   readonly createdAt: string;
 }
 

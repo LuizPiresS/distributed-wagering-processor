@@ -33,6 +33,9 @@ export class WalletLedgerEntryOrmEntity {
   @Property({ type: MoneyType })
   public balanceAfter!: Money;
 
+  @Property({ length: 50, default: "HOUSE_HOLDING" })
+  public counterpartyAccount: string = "HOUSE_HOLDING";
+
   @Property({ type: "timestamptz", defaultRaw: "now()" })
   public createdAt: Date = new Date();
 
@@ -46,6 +49,7 @@ export class WalletLedgerEntryOrmEntity {
       currency: this.currency as CurrencyCode,
       balanceBeforeAmount: this.balanceBefore.toString(),
       balanceAfterAmount: this.balanceAfter.toString(),
+      counterpartyAccount: this.counterpartyAccount,
       createdAt: this.createdAt,
     });
   }
@@ -60,6 +64,7 @@ export class WalletLedgerEntryOrmEntity {
     entity.currency = entry.money.currency;
     entity.balanceBefore = entry.balanceBefore;
     entity.balanceAfter = entry.balanceAfter;
+    entity.counterpartyAccount = entry.counterpartyAccount;
     entity.createdAt = entry.createdAt;
     return entity;
   }

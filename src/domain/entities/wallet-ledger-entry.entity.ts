@@ -1,3 +1,4 @@
+import { CounterpartyAccount } from "../enums/counterparty-account.enum";
 import { LedgerDirection } from "../enums/ledger-direction.enum";
 import {
   CurrencyMismatchError,
@@ -14,6 +15,7 @@ export interface CreateLedgerEntryProps {
   readonly money: Money;
   readonly balanceBefore: Money;
   readonly balanceAfter: Money;
+  readonly counterpartyAccount?: CounterpartyAccount | string;
   readonly createdAt?: Date;
 }
 
@@ -26,6 +28,7 @@ export interface LedgerEntryState {
   readonly currency: string;
   readonly balanceBeforeAmount: string;
   readonly balanceAfterAmount: string;
+  readonly counterpartyAccount?: string;
   readonly createdAt: Date;
 }
 
@@ -38,6 +41,7 @@ export class WalletLedgerEntry {
     public readonly money: Money,
     public readonly balanceBefore: Money,
     public readonly balanceAfter: Money,
+    public readonly counterpartyAccount: string,
     public readonly createdAt: Date,
   ) {}
 
@@ -65,6 +69,9 @@ export class WalletLedgerEntry {
       );
     }
 
+    const counterpartyAccount =
+      props.counterpartyAccount || CounterpartyAccount.HouseHolding;
+
     const entry = new WalletLedgerEntry(
       props.id,
       props.walletId,
@@ -73,6 +80,7 @@ export class WalletLedgerEntry {
       props.money,
       props.balanceBefore,
       props.balanceAfter,
+      counterpartyAccount,
       props.createdAt || new Date(),
     );
 
@@ -113,6 +121,7 @@ export class WalletLedgerEntry {
       money,
       balanceBefore,
       balanceAfter,
+      state.counterpartyAccount || CounterpartyAccount.HouseHolding,
       state.createdAt,
     );
   }
@@ -135,6 +144,7 @@ export class WalletLedgerEntry {
     money: MoneyProps;
     balanceBefore: MoneyProps;
     balanceAfter: MoneyProps;
+    counterpartyAccount: string;
     createdAt: string;
   } {
     return {
@@ -145,6 +155,7 @@ export class WalletLedgerEntry {
       money: this.money.toJSON(),
       balanceBefore: this.balanceBefore.toJSON(),
       balanceAfter: this.balanceAfter.toJSON(),
+      counterpartyAccount: this.counterpartyAccount,
       createdAt: this.createdAt.toISOString(),
     };
   }

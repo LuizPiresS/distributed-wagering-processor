@@ -10,6 +10,7 @@ export function setupSwagger(app: INestApplication) {
     .setVersion("1.0.0")
     .addTag("Wallets", "Gestão de carteiras, consulta de saldo, extrato com opaque cursor e auditoria contábil")
     .addTag("Wagering Transactions", "Processamento e consulta de transações financeiras de apostas (BET, WIN, LOSS, REFUND, ROLLBACK)")
+    .addTag("Accounting & Double-Entry", "Auditoria do balancete de verificação de partidas dobradas (Trial Balance)")
     .addTag("Health & Observability", "Health checks de liveness/readiness e métricas Prometheus / OpenMetrics")
     .build();
 
@@ -20,3 +21,4 @@ export function setupSwagger(app: INestApplication) {
 
   return document;
 }
+

@@ -805,11 +805,37 @@
           "comment": null,
           "enumItems": [],
           "mappedType": "datetime"
+        },
+        "counterparty_account": {
+          "name": "counterparty_account",
+          "type": "varchar(50)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": 50,
+          "precision": null,
+          "scale": null,
+          "default": "'HOUSE_HOLDING'",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "string"
         }
       },
       "name": "wallet_ledger_entries",
       "schema": "public",
       "indexes": [
+        {
+          "columnNames": [
+            "counterparty_account"
+          ],
+          "composite": false,
+          "constraint": false,
+          "keyName": "idx_ledger_counterparty",
+          "unique": false,
+          "primary": false
+        },
         {
           "columnNames": [
             "wallet_id",

@@ -3,6 +3,7 @@ import { EntityManager } from "@mikro-orm/postgresql";
 import { Injectable, Logger } from "@nestjs/common";
 import { v4 as uuidv4 } from "uuid";
 import {
+  CounterpartyAccount,
   FailureCode,
   LedgerDirection,
   OutboxMessage,
@@ -151,6 +152,11 @@ export class PendingReferenceWorker {
             txOrm.referenceTransactionId = refTx.id;
             txOrm.processedAt = now;
 
+            const counterparty =
+              txOrm.kind === WagerTransactionKind.Refund
+                ? CounterpartyAccount.HouseHolding
+                : CounterpartyAccount.HouseExpense;
+
             const ledgerEntry = WalletLedgerEntry.create({
               id: uuidv4(),
               walletId: wallet.id,
@@ -159,6 +165,7 @@ export class PendingReferenceWorker {
               money: txMoney,
               balanceBefore,
               balanceAfter,
+              counterpartyAccount: counterparty,
               createdAt: now,
             });
             em.persist(WalletLedgerEntryOrmEntity.fromDomain(ledgerEntry));
