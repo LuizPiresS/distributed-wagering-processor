@@ -14,13 +14,17 @@
 - [Bun](https://bun.sh/) >= 1.2
 - [Docker](https://www.docker.com/) e Docker Compose
 
-### Opção A: Execução em Cluster Distribuído de 3 Instâncias (Recomendado)
-Para rodar a arquitetura completa em cluster de 3 nós balanceados via Nginx com um único comando:
+### Opção A: Execução em Cluster Distribuído Multi-Tier (Recomendado)
+Para rodar a arquitetura completa em cluster desacoplado (Tier HTTP de 3 nós + Tier de Workers em segundo plano + Load Balancer Nginx) com um único comando:
 ```bash
-# Compila, provisiona filas/migrações e sobe 3 nós da aplicação com load balancer na porta 3000
-docker compose up -d --scale app=3
+# Compila, provisiona filas/migrações e sobe o cluster escalonado (3 instâncias de API + 2 workers dedicados)
+docker compose up -d --scale app=3 --scale worker=2
 ```
-*O cluster sobe com 3 instâncias ativas do processador, provisionamento automático das filas SQS FIFO, migrações SQL executadas e gateway Nginx na porta 3000.*
+*Topologia dos Serviços:*
+* **`gateway` (Nginx):** Balanceador de carga round-robin na porta `3000` com resolução dinâmica de DNS.
+* **`app` ($\times 3$ réplicas):** Camada de API HTTP pura (`ENABLE_HTTP=true`, `ENABLE_WORKERS=false`), isolada para atender requisições síncronas de apostas sem gargalo de CPU no Event Loop.
+* **`worker` ($\times 2$ réplicas):** Camada dedicada de workers assíncronos (`ENABLE_HTTP=false`, `ENABLE_WORKERS=true`), drenando paralelamente o Transactional Outbox, Inbox e consumidores SQS FIFO via `SELECT ... FOR UPDATE SKIP LOCKED` (padrão *12-Factor App / Concurrency*).
+* **`postgres` & `ministack`:** PostgreSQL 16 com healthcheck ativo e emulador SQS FIFO na porta `4566`.
 
 ---
 

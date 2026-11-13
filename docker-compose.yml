@@ -66,6 +66,7 @@ services:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - SQS_WAGER_QUEUE_URL=http://ministack:4566/000000000000/wager-transactions.fifo
+      - ENABLE_HTTP=true
       - ENABLE_WORKERS=false
     expose:
       - "3000"
@@ -75,6 +76,28 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
+
+  worker:
+    image: distributed-wagering-processor:latest
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ministack:
+        condition: service_started
+      migration:
+        condition: service_completed_successfully
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/wagering_db
+      - AWS_ENDPOINT=http://ministack:4566
+      - AWS_ENDPOINT_URL=http://ministack:4566
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - SQS_WAGER_QUEUE_URL=http://ministack:4566/000000000000/wager-transactions.fifo
+      - ENABLE_HTTP=false
+      - ENABLE_WORKERS=true
 
   gateway:
     image: nginx:alpine
