@@ -7,7 +7,7 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "bun run src/main.ts",
     "start:dev": "bun --watch src/main.ts",
-    "start:prod": "bun run dist/src/main.js",
+    "start:prod": "bun run dist/main.js",
     "test": "bun test tests/unit",
     "test:integration": "bun test tests/integration",
     "test:concurrency": "bun test tests/concurrency",
