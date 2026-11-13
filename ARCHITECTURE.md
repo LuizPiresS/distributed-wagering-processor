@@ -98,6 +98,14 @@ A concorrência em sistemas financeiros de apostas apresenta uma característica
 - Nenhuma transação financeira adquire locks em tabelas inteiras ou em múltiplas carteiras simultaneamente.
 - Em caso de disputa simultânea de 50 requisições para a mesma carteira (Cenário C1), o PostgreSQL enfileira as transações com segurança, garantindo que a primeira execute o débito e as 49 subsequentes detectem a chave de idempotência e retornem o replay imediato sem duplicidade.
 
+### 2.3 Orquestração em Cluster Multi-Instâncias (3 Nós Reais)
+Para comprovar a robustez distribuída sem depender de suposições de nó único:
+- **Scaling Horizontal Nativo:** O arquivo `docker-compose.yml` suporta execução simultânea de múltiplas réplicas com `docker compose up -d --scale app=3`.
+- **Gateway & Balanceamento de Carga:** Um proxy Nginx (`gateway`) expõe a porta 3000 no host e efetua balanceamento round-robin dinâmico entre os nós do cluster via DNS embutido do Docker.
+- **Competição Concorrente sem Bloqueio Mútuo:**
+  - As 3 instâncias consomem concorrentemente da fila SQS FIFO e da tabela `outbox_messages` via `SELECT ... FOR UPDATE SKIP LOCKED`.
+  - Deadlocks e duplicatas são matematicamente prevenidos no PostgreSQL, garantindo que mesmo sob crash abrupto de uma das réplicas, as demais assumem o processamento sem inconsistências contábeis.
+
 ---
 
 ## 3. Padrões de Mensageria Distribuída & Resiliência

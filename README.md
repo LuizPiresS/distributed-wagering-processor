@@ -14,27 +14,39 @@
 - [Bun](https://bun.sh/) >= 1.2
 - [Docker](https://www.docker.com/) e Docker Compose
 
-### 1. Subir Infraestrutura (PostgreSQL 16 e MiniStack SQS FIFO)
+### Opção A: Execução em Cluster Distribuído de 3 Instâncias (Recomendado)
+Para rodar a arquitetura completa em cluster de 3 nós balanceados via Nginx com um único comando:
 ```bash
-docker compose up -d
+# Compila, provisiona filas/migrações e sobe 3 nós da aplicação com load balancer na porta 3000
+docker compose up -d --scale app=3
+```
+*O cluster sobe com 3 instâncias ativas do processador, provisionamento automático das filas SQS FIFO, migrações SQL executadas e gateway Nginx na porta 3000.*
+
+---
+
+### Opção B: Desenvolvimento Local com Bun
+
+#### 1. Subir Infraestrutura (PostgreSQL 16 e MiniStack SQS FIFO)
+```bash
+docker compose up -d postgres ministack
 ```
 *O PostgreSQL estará disponível na porta 5432 e o MiniStack SQS na porta 4566.*
 
-### 2. Inicializar as Filas SQS FIFO e DLQ
+#### 2. Inicializar as Filas SQS FIFO e DLQ
 ```bash
 bun run init:queues
 ```
 *Cria a fila principal `wager-transactions.fifo` e sua Dead Letter Queue `wager-transactions-dlq.fifo` com `maxReceiveCount = 3`.*
 
-### 3. Executar Migrações do Banco de Dados
+#### 3. Executar Migrações do Banco de Dados
 ```bash
 bun run migration:up
 ```
 *Cria as tabelas `wallets`, `wager_transactions`, `wallet_ledger_entries`, `inbox_messages`, `outbox_messages`, constraints de não-negatividade e regras PostgreSQL de imutabilidade do ledger.*
 
-### 4. Executar os Testes Automatizados (Sem Mocks, com Banco e Filas Reais)
+#### 4. Executar os Testes Automatizados (Sem Mocks, com Banco e Filas Reais)
 ```bash
-# Executa toda a suíte de testes (117 testes: unidade, integração e concorrência)
+# Executa toda a suíte de testes (131 testes: unidade, integração e concorrência)
 bun test
 
 # Executa especificamente os 8 cenários de concorrência real e paralelismo
@@ -44,7 +56,7 @@ bun run test:concurrency
 bun run test:load
 ```
 
-### 5. Iniciar a Aplicação
+#### 5. Iniciar a Aplicação
 ```bash
 # Modo desenvolvimento com hot-reload:
 bun run start:dev
