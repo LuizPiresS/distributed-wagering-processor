@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 
-const BASE_URL = "http://localhost:3000";
+const BASE_URL = process.env.TARGET_URL || "http://localhost:3000";
 
 interface AttackReport {
   vector: string;
@@ -33,15 +33,22 @@ async function runChaosAssault() {
   console.log("💀 INICIANDO TESTE DE CAOS E ATAQUES AO VIVO CONTRA O LOCALHOST:3000");
   console.log("======================================================================\n");
 
+  const STAMPEDE_COUNT = process.env.CHAOS_STAMPEDE_COUNT
+    ? parseInt(process.env.CHAOS_STAMPEDE_COUNT, 10)
+    : 50;
+  const RACE_COUNT = process.env.CHAOS_RACE_COUNT
+    ? parseInt(process.env.CHAOS_RACE_COUNT, 10)
+    : 10;
+
   // -----------------------------------------------------------------------------------------
-  // ATAQUE 1: Stampede de Idempotência (50 requisições idênticas no mesmo milissegundo)
+  // ATAQUE 1: Stampede de Idempotência (N requisições idênticas no mesmo milissegundo)
   // -----------------------------------------------------------------------------------------
-  console.log("🔥 [Ataque 1/7] Disparando Stampede de 50 requisições simultâneas com a mesma Idempotency-Key...");
+  console.log(`🔥 [Ataque 1/10] Disparando Stampede de ${STAMPEDE_COUNT} requisições simultâneas com a mesma Idempotency-Key...`);
   const wallet1 = await createWallet("500.00");
   const stampedeKey = `stampede-${uuidv4()}`;
   const extTxId = `ext-${uuidv4()}`;
 
-  const stampedePromises = Array.from({ length: 50 }, () =>
+  const stampedePromises = Array.from({ length: STAMPEDE_COUNT }, () =>
     fetch(`${BASE_URL}/wagering/transactions`, {
       method: "POST",
       headers: {
@@ -70,25 +77,25 @@ async function runChaosAssault() {
   const w1Data: any = await w1CheckRes.json();
 
   const attack1Passed =
-    createdCount === 1 && okReplayCount === 49 && w1Data.balance.amount === "400.00";
+    createdCount === 1 && okReplayCount === STAMPEDE_COUNT - 1 && w1Data.balance.amount === "400.00";
 
   reports.push({
-    vector: "1. Stampede de Idempotência (50 concorrentes)",
-    description: "50 chamadas paralelas com mesma chave exata disputando a carteira",
+    vector: `1. Stampede de Idempotência (${STAMPEDE_COUNT} concorrentes)`,
+    description: `${STAMPEDE_COUNT} chamadas paralelas com mesma chave exata disputando a carteira`,
     passed: attack1Passed,
-    details: `Criadas: ${createdCount} (esperado 1), Replays: ${okReplayCount} (esperado 49), Saldo final: R$ ${w1Data.balance.amount} (esperado R$ 400.00)`,
+    details: `Criadas: ${createdCount} (esperado 1), Replays: ${okReplayCount} (esperado ${STAMPEDE_COUNT - 1}), Saldo final: R$ ${w1Data.balance.amount} (esperado R$ 400.00)`,
   });
   console.log(
-    `   -> ${attack1Passed ? "🛡️ BLOQUEADO COM SUCESSO" : "❌ FALHOU"}: 1 débito realizado, 49 replays idênticos devolvidos, saldo debitado apenas uma vez!\n`
+    `   -> ${attack1Passed ? "🛡️ BLOQUEADO COM SUCESSO" : "❌ FALHOU"}: 1 débito realizado, ${STAMPEDE_COUNT - 1} replays idênticos devolvidos, saldo debitado apenas uma vez!\n`
   );
 
   // -----------------------------------------------------------------------------------------
-  // ATAQUE 2: Double-Spending Race (10 apostas de R$ 50 simultâneas em saldo de R$ 100)
+  // ATAQUE 2: Double-Spending Race (N apostas de R$ 50 simultâneas em saldo de R$ 100)
   // -----------------------------------------------------------------------------------------
-  console.log("🔥 [Ataque 2/7] Disparando 10 apostas concorrentes de R$ 50 em uma carteira com apenas R$ 100...");
+  console.log(`🔥 [Ataque 2/10] Disparando ${RACE_COUNT} apostas concorrentes de R$ 50 em uma carteira com apenas R$ 100...`);
   const wallet2 = await createWallet("100.00");
 
-  const racePromises = Array.from({ length: 10 }, (_, i) =>
+  const racePromises = Array.from({ length: RACE_COUNT }, (_, i) =>
     fetch(`${BASE_URL}/wagering/transactions`, {
       method: "POST",
       headers: {
@@ -117,22 +124,22 @@ async function runChaosAssault() {
   const w2Data: any = await w2CheckRes.json();
 
   const attack2Passed =
-    processedBets === 2 && rejectedBets === 8 && w2Data.balance.amount === "0.00";
+    processedBets === 2 && rejectedBets === RACE_COUNT - 2 && w2Data.balance.amount === "0.00";
 
   reports.push({
     vector: "2. Double-Spending Race (Saque a descoberto)",
-    description: "10 apostas de R$ 50 (R$ 500 no total) disparadas no mesmo instante sobre R$ 100",
+    description: `${RACE_COUNT} apostas de R$ 50 disparadas no mesmo instante sobre R$ 100`,
     passed: attack2Passed,
-    details: `Processadas: ${processedBets} (esperado 2), Rejeitadas (422): ${rejectedBets} (esperado 8), Saldo final: R$ ${w2Data.balance.amount} (esperado R$ 0.00)`,
+    details: `Processadas: ${processedBets} (esperado 2), Rejeitadas (422): ${rejectedBets} (esperado ${RACE_COUNT - 2}), Saldo final: R$ ${w2Data.balance.amount} (esperado R$ 0.00)`,
   });
   console.log(
-    `   -> ${attack2Passed ? "🛡️ BLOQUEADO COM SUCESSO" : "❌ FALHOU"}: Exatamente 2 apostas aceitas, 8 barradas por saldo insuficiente, saldo final R$ 0.00 (nunca negativo)!\n`
+    `   -> ${attack2Passed ? "🛡️ BLOQUEADO COM SUCESSO" : "❌ FALHOU"}: Exatamente 2 apostas aceitas, ${RACE_COUNT - 2} barradas por saldo insuficiente, saldo final R$ 0.00 (nunca negativo)!\n`
   );
 
   // -----------------------------------------------------------------------------------------
   // ATAQUE 3: Payload Poisoning / Conflicting Replay (Fraude com chave reutilizada)
   // -----------------------------------------------------------------------------------------
-  console.log("🔥 [Ataque 3/7] Tentativa de fraude: reenviar chave de R$ 100 com valor alterado para R$ 999...");
+  console.log("🔥 [Ataque 3/10] Tentativa de fraude: reenviar chave de R$ 100 com valor alterado para R$ 999...");
   const conflictRes = await fetch(`${BASE_URL}/wagering/transactions`, {
     method: "POST",
     headers: {
@@ -165,7 +172,7 @@ async function runChaosAssault() {
   // -----------------------------------------------------------------------------------------
   // ATAQUE 4: Rollback com Saldo Insuficiente (Tentativa de forçar saldo negativo)
   // -----------------------------------------------------------------------------------------
-  console.log("🔥 [Ataque 4/7] Tentativa de Rollback de prêmio já gasto pelo jogador...");
+  console.log("🔥 [Ataque 4/10] Tentativa de Rollback de prêmio já gasto pelo jogador...");
   const wallet4 = await createWallet("50.00");
   const winTxExtId = `win-ext-${uuidv4()}`;
 
@@ -240,7 +247,7 @@ async function runChaosAssault() {
   // -----------------------------------------------------------------------------------------
   // ATAQUE 5: Injeção de Valores Inválidos, Negativos e Corrompidos
   // -----------------------------------------------------------------------------------------
-  console.log("🔥 [Ataque 5/7] Injeção de valores negativos, NaN, 3 decimais, OPENING forjado e moeda errada...");
+  console.log("🔥 [Ataque 5/10] Injeção de valores negativos, NaN, 3 decimais, OPENING forjado e moeda errada...");
   const wallet5 = await createWallet("100.00");
 
   const corruptPayloads = [
@@ -286,10 +293,226 @@ async function runChaosAssault() {
   );
 
   // -----------------------------------------------------------------------------------------
-  // ATAQUE 6: Prova Matemática de Invariante Contábil Individual Pós-Ataques
+  // ATAQUE 6: Double Refund com Chaves Distintas (Dupla Reversão Fraudulenta)
   // -----------------------------------------------------------------------------------------
-  console.log("🔥 [Ataque 6/7] Verificando integridade contábil matemática de todas as carteiras atacadas...");
-  const attackedWallets = [wallet1.id, wallet2.id, wallet4.id, wallet5.id];
+  console.log("🔥 [Ataque 6/10] Tentativa de Double Refund: estornar a mesma aposta 2 vezes com chaves diferentes...");
+  const wallet6 = await createWallet("100.00");
+  const betExtId6 = `bet-ext-${uuidv4()}`;
+
+  // 1. Jogador realiza aposta de R$ 50.00 (saldo vai para R$ 50.00)
+  const betRes6 = await fetch(`${BASE_URL}/wagering/transactions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": `bet-key-${uuidv4()}` },
+    body: JSON.stringify({
+      providerId: "chaos-prov",
+      externalTransactionId: betExtId6,
+      playerId: wallet6.playerId,
+      walletId: wallet6.id,
+      roundId: "r-double-refund",
+      gameId: "chaos-game",
+      kind: "BET",
+      money: { amount: "50.00", currency: "BRL" },
+    }),
+  });
+  if (!betRes6.ok) {
+    throw new Error(`Falha no setup de aposta para double refund: ${betRes6.statusText}`);
+  }
+
+  // 2. Primeiro REFUND legítimo (saldo é restaurado para R$ 100.00)
+  const refundRes1 = await fetch(`${BASE_URL}/wagering/transactions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": `ref-key-1-${uuidv4()}` },
+    body: JSON.stringify({
+      providerId: "chaos-prov",
+      externalTransactionId: `ref-ext-1-${uuidv4()}`,
+      playerId: wallet6.playerId,
+      walletId: wallet6.id,
+      roundId: "r-double-refund",
+      gameId: "chaos-game",
+      kind: "REFUND",
+      money: { amount: "50.00", currency: "BRL" },
+      referenceExternalTransactionId: betExtId6,
+    }),
+  });
+  const ref1Data: any = await refundRes1.json();
+
+  // 3. Segundo REFUND fraudulento com CHAVE NOVA tentando estornar a mesma aposta novamente
+  const refundRes2 = await fetch(`${BASE_URL}/wagering/transactions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": `ref-key-2-${uuidv4()}` },
+    body: JSON.stringify({
+      providerId: "chaos-prov",
+      externalTransactionId: `ref-ext-2-${uuidv4()}`,
+      playerId: wallet6.playerId,
+      walletId: wallet6.id,
+      roundId: "r-double-refund",
+      gameId: "chaos-game",
+      kind: "REFUND",
+      money: { amount: "50.00", currency: "BRL" },
+      referenceExternalTransactionId: betExtId6,
+    }),
+  });
+  const ref2Data: any = await refundRes2.json();
+
+  const w6CheckRes = await fetch(`${BASE_URL}/wallets/${wallet6.id}`);
+  const w6Data: any = await w6CheckRes.json();
+
+  const attack6Passed =
+    refundRes1.status === 201 &&
+    ref1Data.status === "PROCESSED" &&
+    refundRes2.status === 422 &&
+    ref2Data.failureCode === "REFERENCE_ALREADY_REVERSED" &&
+    w6Data.balance.amount === "100.00";
+
+  reports.push({
+    vector: "6. Double Refund com Chaves Distintas",
+    description: "Tentativa de re-estornar aposta com nova idempotency-key para duplicar saldo",
+    passed: attack6Passed,
+    details: `1º Estorno: Status ${refundRes1.status} (esperado 201), 2º Estorno: Status ${refundRes2.status} (esperado 422), FailureCode: ${ref2Data.failureCode}, Saldo preservado: R$ ${w6Data.balance.amount} (esperado R$ 100.00)`,
+  });
+  console.log(
+    `   -> ${attack6Passed ? "🛡️ BLOQUEADO COM SUCESSO" : "❌ FALHOU"}: 1º estorno aceito e 2º estorno bloqueado com REFERENCE_ALREADY_REVERSED!\n`
+  );
+
+  // -----------------------------------------------------------------------------------------
+  // ATAQUE 7: Hijacking de Carteira Alheia (Cross-Player Attack)
+  // -----------------------------------------------------------------------------------------
+  console.log("🔥 [Ataque 7/10] Tentativa de sequestro de carteira: Atacante B tentando gastar saldo do Jogador A...");
+  const walletA = await createWallet("100.00");
+  const attackerBPlayerId = uuidv4();
+
+  const hijackingRes = await fetch(`${BASE_URL}/wagering/transactions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": `hijack-${uuidv4()}` },
+    body: JSON.stringify({
+      providerId: "chaos-prov",
+      externalTransactionId: `hijack-tx-${uuidv4()}`,
+      playerId: attackerBPlayerId, // ID de jogador divergente do dono da carteira
+      walletId: walletA.id,
+      roundId: "r-hijack",
+      gameId: "chaos-game",
+      kind: "BET",
+      money: { amount: "40.00", currency: "BRL" },
+    }),
+  });
+
+  const hijackData: any = await hijackingRes.json();
+  const wACheckRes = await fetch(`${BASE_URL}/wallets/${walletA.id}`);
+  const wAData: any = await wACheckRes.json();
+
+  const attack7Passed =
+    hijackingRes.status === 422 &&
+    hijackData.failureCode === "PLAYER_MISMATCH" &&
+    wAData.balance.amount === "100.00";
+
+  reports.push({
+    vector: "7. Hijacking de Carteira Alheia (Cross-Player Attack)",
+    description: "Atacante tenta debitar carteira de outro jogador forjando playerId divergente",
+    passed: attack7Passed,
+    details: `Status: ${hijackingRes.status} (esperado 422), FailureCode: ${hijackData.failureCode}, Saldo protegido: R$ ${wAData.balance.amount} (esperado R$ 100.00)`,
+  });
+  console.log(
+    `   -> ${attack7Passed ? "🛡️ BLOQUEADO COM SUCESSO" : "❌ FALHOU"}: Rejeitado com PLAYER_MISMATCH e saldo da vítima 100% intacto em R$ 100.00!\n`
+  );
+
+  // -----------------------------------------------------------------------------------------
+  // ATAQUE 8: Desordem Temporal Assíncrona (REFUND antes de BET)
+  // -----------------------------------------------------------------------------------------
+  console.log("🔥 [Ataque 8/10] Mensagens fora de ordem: REFUND recebido antes da BET chegar ao sistema...");
+  const wallet8 = await createWallet("100.00");
+  const betExtId8 = `bet-out-of-order-${uuidv4()}`;
+  const refundExtId8 = `ref-out-of-order-${uuidv4()}`;
+
+  // 1. REFUND chega antes da BET
+  const oooRefundRes = await fetch(`${BASE_URL}/wagering/transactions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": `ooo-ref-${uuidv4()}` },
+    body: JSON.stringify({
+      providerId: "chaos-prov",
+      externalTransactionId: refundExtId8,
+      playerId: wallet8.playerId,
+      walletId: wallet8.id,
+      roundId: "r-ooo",
+      gameId: "chaos-game",
+      kind: "REFUND",
+      money: { amount: "35.00", currency: "BRL" },
+      referenceExternalTransactionId: betExtId8,
+    }),
+  });
+
+  const oooRefundData: any = await oooRefundRes.json();
+  const refundParked =
+    oooRefundRes.status === 202 && oooRefundData.status === "PENDING_REFERENCE";
+
+  // 2. BET chega e debita a carteira (R$ 100.00 - R$ 35.00 = R$ 65.00)
+  const oooBetRes = await fetch(`${BASE_URL}/wagering/transactions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": `ooo-bet-${uuidv4()}` },
+    body: JSON.stringify({
+      providerId: "chaos-prov",
+      externalTransactionId: betExtId8,
+      playerId: wallet8.playerId,
+      walletId: wallet8.id,
+      roundId: "r-ooo",
+      gameId: "chaos-game",
+      kind: "BET",
+      money: { amount: "35.00", currency: "BRL" },
+    }),
+  });
+  const oooBetData: any = await oooBetRes.json();
+  const betProcessed =
+    oooBetRes.status === 201 && oooBetData.balance.amount === "65.00";
+
+  // 3. Aguardar o background worker resolver a referência pendente (polling por até 8s)
+  console.log("   ⏳ Aguardando background worker resolver a referência pendente...");
+  let workerResolved = false;
+  const pollStart = Date.now();
+  while (Date.now() - pollStart < 8500) {
+    const txCheck = await fetch(
+      `${BASE_URL}/providers/chaos-prov/wagering/transactions/${refundExtId8}`
+    );
+    if (txCheck.ok) {
+      const txData: any = await txCheck.json();
+      if (txData.status === "PROCESSED") {
+        workerResolved = true;
+        break;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  const w8CheckRes = await fetch(`${BASE_URL}/wallets/${wallet8.id}`);
+  const w8Data: any = await w8CheckRes.json();
+
+  const attack8Passed =
+    refundParked &&
+    betProcessed &&
+    workerResolved &&
+    w8Data.balance.amount === "100.00";
+
+  reports.push({
+    vector: "8. Desordem Temporal Assíncrona (REFUND antes de BET)",
+    description: "Reversão chega primeiro (202 PENDING_REFERENCE) e background worker resolve quando BET chega",
+    passed: attack8Passed,
+    details: `Refund: Status ${oooRefundRes.status} (esperado 202), Bet: Status ${oooBetRes.status} (esperado 201), Worker Resolution: ${workerResolved ? "PROCESSED" : "PENDING"}, Saldo final restaurado: R$ ${w8Data.balance.amount} (esperado R$ 100.00)`,
+  });
+  console.log(
+    `   -> ${attack8Passed ? "🛡️ BLOQUEADO COM SUCESSO" : "❌ FALHOU"}: REFUND estacionado com 202, BET processada e worker restaurou saldo para R$ 100.00!\n`
+  );
+
+  // -----------------------------------------------------------------------------------------
+  // ATAQUE 9: Prova Matemática de Invariante Contábil Individual Pós-Ataques
+  // -----------------------------------------------------------------------------------------
+  console.log("🔥 [Ataque 9/10] Verificando integridade contábil matemática de todas as carteiras atacadas...");
+  const attackedWallets = [
+    wallet1.id,
+    wallet2.id,
+    wallet4.id,
+    wallet5.id,
+    wallet6.id,
+    walletA.id,
+    wallet8.id,
+  ];
   let allReconciled = true;
 
   for (const wid of attackedWallets) {
@@ -301,11 +524,11 @@ async function runChaosAssault() {
   }
 
   reports.push({
-    vector: "6. Reconciliação Contábil Individual das Carteiras",
+    vector: "9. Reconciliação Contábil Individual das Carteiras",
     description: "Audita se a soma de todos os lançamentos do ledger bate exatamente com o saldo armazenado em cada carteira",
     passed: allReconciled,
     details: allReconciled
-      ? "100% das carteiras atacadas reconciliadas com diferença de R$ 0.00"
+      ? `100% das ${attackedWallets.length} carteiras atacadas reconciliadas com diferença de R$ 0.00`
       : "Inconsistência detectada em alguma carteira",
   });
   console.log(
@@ -313,9 +536,9 @@ async function runChaosAssault() {
   );
 
   // -----------------------------------------------------------------------------------------
-  // ATAQUE 7: Auditoria Global de Partidas Dobradas (Double-Entry Bookkeeping Trial Balance)
+  // ATAQUE 10: Auditoria Global de Partidas Dobradas (Double-Entry Bookkeeping Trial Balance)
   // -----------------------------------------------------------------------------------------
-  console.log("🔥 [Ataque 7/7] Verificando Balancete Global de Partidas Dobradas (Trial Balance)...");
+  console.log("🔥 [Ataque 10/10] Verificando Balancete Global de Partidas Dobradas (Trial Balance)...");
   let trialBalancePassed = false;
   let tbDetails = "";
 
@@ -333,7 +556,7 @@ async function runChaosAssault() {
   }
 
   reports.push({
-    vector: "7. Balancete Global de Partidas Dobradas (Trial Balance)",
+    vector: "10. Balancete Global de Partidas Dobradas (Trial Balance)",
     description: "Comprova que a soma global de todos os débitos é rigorosamente igual à soma de créditos (Δ = 0.00)",
     passed: trialBalancePassed,
     details: trialBalancePassed ? `🛡️ APROVADO: ${tbDetails}` : `❌ FALHOU: ${tbDetails}`,
@@ -357,6 +580,18 @@ async function runChaosAssault() {
   );
   console.log("======================================================================\n");
 
+  try {
+    const metricsRes = await fetch(`${BASE_URL}/metrics`, {
+      headers: { Accept: "application/json" },
+    });
+    if (metricsRes.ok) {
+      const metricsData = await metricsRes.json();
+      console.log("📈 Métricas de Defesa Capturadas em Tempo Real (/metrics):");
+      console.log(JSON.stringify(metricsData, null, 2));
+      console.log("\n======================================================================\n");
+    }
+  } catch {}
+
   const totalPassed = reports.filter((r) => r.passed).length;
   if (totalPassed === reports.length) {
     console.log("🎉 O SERVIDOR SUPORTOU 100% DOS ATAQUES DE CAOS SEM NENHUMA CORRUPÇÃO!");
@@ -370,4 +605,3 @@ runChaosAssault().catch((err) => {
   console.error("Erro fatal no teste de caos:", err);
   process.exit(1);
 });
-
