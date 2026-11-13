@@ -1,8 +1,9 @@
 # Arquitetura e Decisões Técnicas — Distributed Wagering Processor
 
 > Para apresentação técnica executiva com diagramas em formato de slides e guia de defesa, consulte o [docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md).
+> Para o relatório executivo de carga máxima (473+ RPS), estresse e auditoria de caos, consulte o [docs/BENCHMARK_REPORT.md](docs/BENCHMARK_REPORT.md).
 
-Este documento descreve as decisões de arquitetura, padrões distribuídos, modelo de concorrência, garantias financeiras e trade-offs adotados no **Distributed Wagering Processor** (Jungle Gaming Challenge).
+Este documento descreve as decisões de arquitetura, padrões distribuídos, modelo de concorrência, garantias financeiras, observabilidade e trade-offs adotados no **Distributed Wagering Processor** (Jungle Gaming Challenge).
 
 ---
 
@@ -12,11 +13,14 @@ O sistema foi concebido sob os princípios de **Clean Architecture**, **Domain-D
 
 ```mermaid
 graph TD
-    subgraph Presentation ["1. Apresentação (REST & Middleware)"]
+    subgraph Presentation ["1. Apresentação (REST & OpenAPI Swagger)"]
         WC["WalletsController"]
         TC["WageringTransactionsController"]
+        PTC["ProviderWageringTransactionsController"]
         RC["ReconciliationController"]
-        HC["HealthController"]
+        AC["AccountingController (Trial Balance)"]
+        MC["MetricsController (/metrics Prometheus)"]
+        HC["HealthController (/health/live, /ready)"]
         CID["CorrelationIdMiddleware"]
     end
 
@@ -30,6 +34,8 @@ graph TD
         PW["ProcessWagerTransactionUseCase"]
         CW["CreateWalletUseCase"]
         RW["ReconcileWalletUseCase"]
+        GTB["GetTrialBalanceUseCase"]
+        GWT["GetWagerTransactionUseCase"]
         GWL["GetWalletLedgerUseCase"]
         GW["GetWalletUseCase"]
     end
@@ -45,13 +51,17 @@ graph TD
     subgraph Infrastructure ["5. Persistência & Serviços Externos"]
         PG[("PostgreSQL 16 (Constraints + Rules)")]
         SQS["AWS SQS FIFO (MiniStack / LocalStack)"]
+        MS["MetricsService (OpenMetrics Registry)"]
     end
 
     WC --> CW
     WC --> GWL
     WC --> GW
     TC --> PW
+    PTC --> GWT
     RC --> RW
+    AC --> GTB
+    MC --> MS
     SQSC --> PW
     PW --> WA
     PW --> VO
@@ -60,6 +70,8 @@ graph TD
     PW --> IE
     CW --> WA
     CW --> VO
+    GTB --> PG
+    GWT --> PG
     OPW --> PG
     OPW --> SQS
     PRW --> PG
@@ -70,9 +82,9 @@ graph TD
 
 ### 1.1 Separação de Camadas
 - **Camada de Domínio (`src/domain`):** Código TypeScript puro, sem dependências de frameworks. Contém entidades ricas (`Wallet`, `WagerTransaction`, `WalletLedgerEntry`, `InboxMessage`, `OutboxMessage`), Value Objects (`Money`) e regras invariantes.
-- **Camada de Aplicação (`src/application`):** Orquestra os casos de uso, gerenciamento de transações de banco de dados, motor de idempotência e emissão de eventos de integração.
-- **Camada de Apresentação (`src/presentation`):** Controladores NestJS expondo a API REST, validação de requisições, headers de idempotência, correlação ponta a ponta e mapeamento semântico de códigos de status HTTP.
-- **Camada de Infraestrutura (`src/infrastructure`):** Mapeamento relacional com MikroORM v6, migrações SQL, triggers/regras de imutabilidade no PostgreSQL, clientes AWS SQS FIFO e workers em background.
+- **Camada de Aplicação (`src/application`):** Orquestra os casos de uso (`ProcessWagerTransactionUseCase`, `GetTrialBalanceUseCase`, etc.), gerenciamento de transações atômicas de banco de dados, motor de idempotência e emissão de eventos de integração.
+- **Camada de Apresentação (`src/presentation`):** Controladores NestJS expondo a API REST, documentação interativa **OpenAPI / Swagger UI** em `/docs`, validação de requisições, headers de idempotência obrigatórios, correlação ponta a ponta e mapeamento semântico de códigos de status HTTP.
+- **Camada de Infraestrutura (`src/infrastructure`):** Mapeamento relacional com MikroORM v6, migrações SQL versionadas, triggers/regras de imutabilidade no PostgreSQL, clientes AWS SQS FIFO, `MetricsService` e workers em background.
 
 ---
 
@@ -96,7 +108,7 @@ A concorrência em sistemas financeiros de apostas apresenta uma característica
 ### 2.2 Prevenção contra Deadlocks e Hot Wallets
 - Todas as operações transacionais que afetam saldo bloqueiam **apenas a carteira do jogador** no início do fluxo.
 - Nenhuma transação financeira adquire locks em tabelas inteiras ou em múltiplas carteiras simultaneamente.
-- Em caso de disputa simultânea de 50 requisições para a mesma carteira (Cenário C1), o PostgreSQL enfileira as transações com segurança, garantindo que a primeira execute o débito e as 49 subsequentes detectem a chave de idempotência e retornem o replay imediato sem duplicidade.
+- Em caso de disputa simultânea de 50 ou 100 requisições para a mesma carteira (Cenários C1 e Caos), o PostgreSQL enfileira as transações com segurança, garantindo que a primeira execute o débito e as subsequentes detectem a chave de idempotência e retornem o replay imediato sem duplicidade.
 
 ### 2.3 Orquestração em Cluster Multi-Tier (12-Factor App / Process Formation)
 Para comprovar a robustez distribuída seguindo as melhores práticas do mercado (The Twelve-Factor App — *Factor VIII: Concurrency*):
@@ -150,7 +162,7 @@ sequenceDiagram
 - **Problema:** Em arquiteturas distribuídas com SQS, um consumidor pode processar e commitar com sucesso no banco de dados, mas sofrer um crash (ou falha de rede) milissegundos antes de chamar `deleteMessage`. O SQS reentregará a mensagem quando o `VisibilityTimeout` expirar (*at-least-once delivery*).
 - **Solução:** O `SqsConsumerService` insere a chave `(consumer_name, message_id)` na tabela `inbox_messages` dentro da **mesma transação SQL** do débito/crédito. Se a mensagem for reentregue, a busca encontra `processed_at IS NOT NULL`, descarta o processamento financeiro e executa o ack no SQS imediatamente.
 
-### 3.2 Transactional Outbox (Publicação sem Mocks)
+### 3.2 Transactional Outbox (Publicação Atômica)
 - **Problema:** Publicar mensagens diretamente no SQS/SNS dentro do use case introduz inconsistência dual-write: se a publicação no SQS suceder mas o commit do PostgreSQL falhar, o evento é publicado indevidamente; se o banco commitar e o broker falhar, o evento é perdido.
 - **Solução:** Os eventos de integração (`WalletBalanceChanged`, `WagerTransactionProcessed`, etc.) são persistidos na tabela `outbox_messages` na mesma transação.
 - **Escalabilidade com Múltiplos Publishers:**
@@ -256,35 +268,126 @@ Variações cosméticas no JSON (como a ordem dos campos ou espaços em branco) 
 | `422 Unprocessable Entity` | Rejeição legítima por regra financeira (`INSUFFICIENT_FUNDS`, `ROLLBACK_WOULD_CAUSE_NEGATIVE_BALANCE`). |
 | `503 Service Unavailable` | Falha nos health checks de prontidão (`/health/ready`). |
 
+### 5.3 Documentação Interativa OpenAPI / Swagger UI
+Para permitir auditoria, inspeção e testes visuais com schemas rigorosamente tipados:
+- **Swagger UI:** Acessível via navegador em `http://localhost:3000/docs`.
+- **OpenAPI 3.0 JSON:** Disponível para consumo de ferramentas em `http://localhost:3000/docs-json`.
+- Todos os endpoints possuem anotações `@ApiOperation`, `@ApiParam`, `@ApiBody` e `@ApiResponse`, destacando a obrigatoriedade do cabeçalho `Idempotency-Key` e os schemas de resposta (`ProcessWagerTransactionResultDto`, `TrialBalanceResultDto`, etc.).
+
 ---
 
-## 6. Estratégia de Autenticação e Ponto de Extensão
+## 6. Observabilidade em Produção & Métricas Prometheus
+
+Conforme estipulado na **Seção 12 do README**, a observabilidade foi desenhada em três pilares integrados:
+
+### 6.1 Logs Estruturados em Formato JSON
+Todos os eventos relevantes emitem logs em formato JSON sanitizado, sem segredos ou payloads sensíveis:
+```json
+{
+  "timestamp": "2026-11-13T21:11:13.912Z",
+  "level": "INFO",
+  "context": "ProcessWagerTransactionUseCase",
+  "correlationId": "corr-81017c28-b551-4673",
+  "walletId": "0192f291-27dd-7d3f-8071-5f8685deef37",
+  "transactionId": "0192f298-345e-7e38-af88-e43f851a819d",
+  "providerId": "pragmatic_play",
+  "event": "transaction_processed",
+  "kind": "BET",
+  "status": "PROCESSED"
+}
+```
+
+### 6.2 Health Checks de Liveness e Readiness
+- `GET /health/live`: Verifica se o processo Node/Bun está responsivo (status 200 `alive`).
+- `GET /health/ready`: Valida conectividade de rede ativa com o PostgreSQL 16 e o emulador AWS SQS FIFO antes de receber tráfego.
+
+### 6.3 Métricas Prometheus & OpenMetrics (`/metrics`)
+O `MetricsService` registra o estado do sistema em memória sem overhead de locks e expõe os dados em dois formatos:
+1. **Formato Prometheus Padrão (Content-Type: `text/plain`):** Raspado por coletores como Prometheus, Datadog ou VictoriaMetrics.
+2. **Formato JSON (Header `Accept: application/json`):** Consumido programaticamente por ferramentas de teste e inspeção.
+
+| Métrica Prometheus Obrigatória | Tipo | O que Mede |
+|---|---|---|
+| `wagering_transactions_total{status="PROCESSED\|REJECTED\|..."}` | Counter | Total de transações processadas agrupadas por status de domínio. |
+| `wagering_duplicates_detected_total` | Counter | Total de replays idempotentes idênticos interceptados e devolvidos. |
+| `wagering_retries_total{type="outbox\|sqs"}` | Counter | Contagem de tentativas de reenvio em caso de falha transitória. |
+| `wagering_dlq_messages_total` | Counter | Mensagens que esgotaram tentativas máximas e foram para a Dead Letter Queue. |
+| `wagering_lock_conflicts_total` | Counter | Conflitos e disputas concorrentes de lock no PostgreSQL (`40P01`). |
+| `wagering_outbox_lag_seconds` | Gauge | Diferença de tempo entre o evento mais antigo não publicado e o tempo atual. |
+| `wagering_latency_seconds_count` & Percentis | Histogram / Summary | Latência de processamento fim-a-fim com cálculo de percentis ($p50, p90, p95, p99$). |
+
+---
+
+## 7. Engenharia de Confiabilidade, Testes de Caos & Benchmark
+
+A qualidade do sistema foi validada por uma abordagem de pirâmide de testes sem mocks artificiais de infraestrutura:
+
+```
+          / \
+         /   \       Testes de Caos & Benchmark de Carga
+        /  ▲  \      (10 vetores de ataque, 473+ RPS, 3.000 ops)
+       /───────\     ------------------------------------------
+      /         \    Testes de Concorrência & Paralelismo Real
+     /     ▲     \   (8 cenários: stampede, hot wallet, crash recovery)
+    /─────────────\  ------------------------------------------
+   /               \ Testes de Integração com Banco & SQS Reais
+  /        ▲        \(PostgreSQL 16, MiniStack SQS FIFO, Migrações)
+ /───────────────────\-----------------------------------------
+/          ▲          \Testes Unitários de Domínio Puro
+───────────────────────(Money, Wallet, WagerTransaction, Ledger)
+```
+
+### 7.1 Suíte de Testes Automatizados (136 Testes / 100% Verde)
+- **136 testes** executados em 24 arquivos via `bun test`.
+- Cobre os 8 cenários de concorrência e falhas obrigatórios da Seção 13 do README.
+
+### 7.2 Suíte de Caos e Defesa Ativa (10 Vetores de Ataque)
+Executada via `bun run test:chaos` contra o cluster ativo, validando 10 vetores de agressão hostil:
+1. **Stampede de Idempotência:** 100 requisições simultâneas no mesmo milissegundo com a mesma chave.
+2. **Double-Spending Race:** 25 apostas concorrentes disputando saldo com 2 aceitas e 23 barradas.
+3. **Fraude de Idempotência:** Adulteração de payload para a mesma chave barrada com 409 Conflict.
+4. **Rollback com Saldo Negativo:** Reversão que deixaria saldo negativo barrada com 422.
+5. **Injeção de Dados Maliciosos:** Valores negativos, NaN, escala incorreta e moeda cruzada sumariamente bloqueados.
+6. **Double Refund com Chaves Distintas:** Tentativa de duplo estorno barrada com `REFERENCE_ALREADY_REVERSED`.
+7. **Hijacking de Carteira Alheia:** Atacante tentando debitar saldo de outro jogador bloqueado com `PLAYER_MISMATCH`.
+8. **Desordem Temporal Assíncrona:** `REFUND` chegando antes de `BET`, estacionado em `PENDING_REFERENCE` e resolvido assincronamente pelo worker.
+9. **Reconciliação Contábil Individual:** 100% das carteiras atacadas auditadas com diferença de R$ 0.00.
+10. **Balancete Global de Partidas Dobradas:** $\sum \text{Débitos} \equiv \sum \text{Créditos}$ com $\Delta = \text{R\$} 0.00$.
+
+### 7.3 Relatório Executivo de Benchmark de Carga
+O sistema foi submetido a baterias de até 3.000 requisições simultâneas com 50 workers paralelos, alcançando:
+- **Throughput Sustentado:** **473.40 RPS**.
+- **Latência Contida:** $p50 = 85.47\text{ ms}$, $p99 = 129.86\text{ ms}$.
+- **Taxa de Erro:** **0.00%**.
+- **Consistência Final:** Zero desvios contábeis.
+> O relatório formal detalhado com gráficos e análise crítica de escalabilidade para 50k+ RPS encontra-se em [docs/BENCHMARK_REPORT.md](docs/BENCHMARK_REPORT.md).
+
+---
+
+## 8. Estratégia de Autenticação e Ponto de Extensão
 
 Conforme explicitado na **Seção 2 do desafio técnico**, autenticação artesanal (tabelas de usuário, senhas em bcrypt, tokens locais) é contraindicada em sistemas financeiros modernos, que devem delegar a identidade a provedores corporativos OIDC/OAuth2 dedicados (Keycloak, Zitadel, AWS Cognito).
 
 O foco deste desafio foi 100% concentrado na **correção financeira, concorrência, idempotência e mensageria**.
 
-### 6.1 Ponto de Extensão para Provedor de Identidade
+### 8.1 Ponto de Extensão para Provedor de Identidade
 A arquitetura foi projetada com portas e adaptadores para fácil acoplamento de um IdP externo:
 ```ts
 export interface ProviderIdentityPort {
-  validateToken(jwt: string): Promise<ProviderIdentity>;
+  authenticate(token: string): Promise<AuthenticatedProvider>;
 }
 
-export interface ProviderIdentity {
+export interface AuthenticatedProvider {
   readonly providerId: string;
   readonly scopes: readonly string[];
   readonly authorizedGames: readonly string[];
 }
 ```
-Para plugar um IdP corporativo em produção:
-1. Criar um `AuthGuard` no NestJS que extrai o token `Bearer <JWT>` do header `Authorization`.
-2. Validar a assinatura através do conjunto de chaves públicas JWKS (`/.well-known/jwks.json`) do Keycloak/Zitadel.
-3. Extrair a claim `provider_id` e injetar no contexto da requisição (`req.providerIdentity`), garantindo que o provedor só possa transacionar apostas para suas próprias transações.
+O `ProviderAuthGuard` foi registrado como guard global, implementando bypass automático para endpoints marcados com `@Public()` (`/health/live`, `/health/ready`, `/metrics`, `/docs`) e delegando requisições com header `Authorization: Bearer <token>` à porta `ProviderIdentityPort`.
 
 ---
 
-## 7. Taxonomia de Falhas (`FailureCode`)
+## 9. Taxonomia de Falhas (`FailureCode`)
 
 Todas as rejeições de negócio retornam códigos padronizados e legíveis por máquina:
 
@@ -302,8 +405,9 @@ Todas as rejeições de negócio retornam códigos padronizados e legíveis por 
 
 ---
 
-## 8. Trade-offs e Limitações Conhecidas
+## 10. Trade-offs e Limitações Conhecidas
 
 1. **Carteira Monomoeda:** Cada carteira possui uma única moeda imutável associada ao par `(playerId, currency)`. Operações multi-moeda exigem a abertura de carteiras distintas para o mesmo jogador.
-2. **Escrita em Hot Wallets:** O uso de lock pessimista por carteira garante consistência financeira de 100%, mas limita a taxa de operações sequenciais para uma **única carteira** à latência do banco de dados (~100-200 ops/s por carteira individual). No entanto, para carteiras distintas, a vazão escala horizontalmente de forma linear.
+2. **Escrita em Hot Wallets:** O uso de lock pessimista por carteira garante consistência financeira de 100%, mas serializa requisições para uma **mesma carteira**. Para carteiras distintas, a vazão escala horizontalmente de forma linear.
 3. **In-Memory MiniStack vs. SQS Real:** Em ambiente de desenvolvimento local, o MiniStack emula as filas SQS FIFO em memória. Em caso de reinicialização do contêiner do MiniStack, o script `bun run init:queues` deve ser reexecutado para provisionar as filas.
+4. **Dimensionamento de Conexões em 50k+ RPS:** Em hiperescala, recomenda-se a inserção de PgBouncer em modo Transaction Pooling para mitigar a exaustão de conexões no processo mestre do PostgreSQL.
