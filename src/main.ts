@@ -13,7 +13,7 @@ async function bootstrap() {
   await app.listen(port);
   console.log(`Wagering Processor application is running on port: ${port}`);
 
-  if (process.env.ENABLE_WORKERS === "true" || process.env.NODE_ENV === "production") {
+  if (process.env.ENABLE_WORKERS === "true") {
     console.log("Background workers enabled (Outbox, SQS Consumer, Pending References).");
     const outboxWorker = app.get(OutboxPublisherWorker);
     const sqsConsumer = app.get(SqsConsumerService);
