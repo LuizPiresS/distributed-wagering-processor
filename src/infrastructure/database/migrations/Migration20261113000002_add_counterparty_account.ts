@@ -17,3 +17,4 @@ export class Migration20261113000002_add_counterparty_account extends Migration 
     `);
   }
 }
+

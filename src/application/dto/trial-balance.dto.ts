@@ -44,3 +44,4 @@ export class TrialBalanceResultDto {
   @ApiProperty({ description: "Timestamp ISO da auditoria contábil", example: "2026-11-13T20:30:00.000Z" })
   public readonly auditedAt!: string;
 }
+

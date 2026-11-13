@@ -166,6 +166,21 @@ async function runLoadTest() {
     }
   }
 
+  let trialBalanceConsistent = true;
+  let trialBalanceDiscrepancy = "0.00";
+  try {
+    const tbRes = await fetch(`${baseUrl}/accounting/trial-balance?currency=BRL`);
+    if (tbRes.ok) {
+      const tbData: any = await tbRes.json();
+      trialBalanceConsistent = tbData.balanced === true && tbData.discrepancy === "0.00";
+      trialBalanceDiscrepancy = tbData.discrepancy;
+    } else {
+      trialBalanceConsistent = false;
+    }
+  } catch {
+    trialBalanceConsistent = false;
+  }
+
   // 6. Relatório Final Formatado
   console.log("\n==========================================================");
   console.log("📊 RELATÓRIO DO EXPERIMENTO DE CARGA");
@@ -182,6 +197,9 @@ async function runLoadTest() {
     "Latência p99 (ms)": `${p99} ms`,
     "Outbox Lag (mensagens pendentes)": outboxLag,
     "Consistência Contábil (100%)": allConsistent ? "APROVADO (0 divergências)" : "FALHOU",
+    "Partidas Dobradas (Trial Balance)": trialBalanceConsistent
+      ? `APROVADO (Δ = ${trialBalanceDiscrepancy} BRL)`
+      : "FALHOU",
   });
   console.log("==========================================================\n");
 
@@ -202,7 +220,7 @@ async function runLoadTest() {
     await orm.close();
   }
 
-  if (!allConsistent || errorRate > 0) {
+  if (!allConsistent || !trialBalanceConsistent || errorRate > 0) {
     process.exit(1);
   }
 }

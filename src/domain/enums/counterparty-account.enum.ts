@@ -3,3 +3,4 @@ export enum CounterpartyAccount {
   HouseHolding = "HOUSE_HOLDING",
   HouseExpense = "HOUSE_EXPENSE",
 }
+

@@ -34,3 +34,4 @@ export class AccountingController {
     return await this.getTrialBalanceUseCase.execute(currency);
   }
 }
+

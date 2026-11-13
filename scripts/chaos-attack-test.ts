@@ -36,7 +36,7 @@ async function runChaosAssault() {
   // -----------------------------------------------------------------------------------------
   // ATAQUE 1: Stampede de Idempotência (50 requisições idênticas no mesmo milissegundo)
   // -----------------------------------------------------------------------------------------
-  console.log("🔥 [Ataque 1/6] Disparando Stampede de 50 requisições simultâneas com a mesma Idempotency-Key...");
+  console.log("🔥 [Ataque 1/7] Disparando Stampede de 50 requisições simultâneas com a mesma Idempotency-Key...");
   const wallet1 = await createWallet("500.00");
   const stampedeKey = `stampede-${uuidv4()}`;
   const extTxId = `ext-${uuidv4()}`;
@@ -85,7 +85,7 @@ async function runChaosAssault() {
   // -----------------------------------------------------------------------------------------
   // ATAQUE 2: Double-Spending Race (10 apostas de R$ 50 simultâneas em saldo de R$ 100)
   // -----------------------------------------------------------------------------------------
-  console.log("🔥 [Ataque 2/6] Disparando 10 apostas concorrentes de R$ 50 em uma carteira com apenas R$ 100...");
+  console.log("🔥 [Ataque 2/7] Disparando 10 apostas concorrentes de R$ 50 em uma carteira com apenas R$ 100...");
   const wallet2 = await createWallet("100.00");
 
   const racePromises = Array.from({ length: 10 }, (_, i) =>
@@ -132,7 +132,7 @@ async function runChaosAssault() {
   // -----------------------------------------------------------------------------------------
   // ATAQUE 3: Payload Poisoning / Conflicting Replay (Fraude com chave reutilizada)
   // -----------------------------------------------------------------------------------------
-  console.log("🔥 [Ataque 3/6] Tentativa de fraude: reenviar chave de R$ 100 com valor alterado para R$ 999...");
+  console.log("🔥 [Ataque 3/7] Tentativa de fraude: reenviar chave de R$ 100 com valor alterado para R$ 999...");
   const conflictRes = await fetch(`${BASE_URL}/wagering/transactions`, {
     method: "POST",
     headers: {
@@ -165,7 +165,7 @@ async function runChaosAssault() {
   // -----------------------------------------------------------------------------------------
   // ATAQUE 4: Rollback com Saldo Insuficiente (Tentativa de forçar saldo negativo)
   // -----------------------------------------------------------------------------------------
-  console.log("🔥 [Ataque 4/6] Tentativa de Rollback de prêmio já gasto pelo jogador...");
+  console.log("🔥 [Ataque 4/7] Tentativa de Rollback de prêmio já gasto pelo jogador...");
   const wallet4 = await createWallet("50.00");
   const winTxExtId = `win-ext-${uuidv4()}`;
 
@@ -240,7 +240,7 @@ async function runChaosAssault() {
   // -----------------------------------------------------------------------------------------
   // ATAQUE 5: Injeção de Valores Inválidos, Negativos e Corrompidos
   // -----------------------------------------------------------------------------------------
-  console.log("🔥 [Ataque 5/6] Injeção de valores negativos, NaN, 3 decimais, OPENING forjado e moeda errada...");
+  console.log("🔥 [Ataque 5/7] Injeção de valores negativos, NaN, 3 decimais, OPENING forjado e moeda errada...");
   const wallet5 = await createWallet("100.00");
 
   const corruptPayloads = [
@@ -286,9 +286,9 @@ async function runChaosAssault() {
   );
 
   // -----------------------------------------------------------------------------------------
-  // ATAQUE 6: Prova Matemática de Invariante Contábil Pós-Ataques
+  // ATAQUE 6: Prova Matemática de Invariante Contábil Individual Pós-Ataques
   // -----------------------------------------------------------------------------------------
-  console.log("🔥 [Ataque 6/6] Verificando integridade contábil matemática de todas as carteiras atacadas...");
+  console.log("🔥 [Ataque 6/7] Verificando integridade contábil matemática de todas as carteiras atacadas...");
   const attackedWallets = [wallet1.id, wallet2.id, wallet4.id, wallet5.id];
   let allReconciled = true;
 
@@ -301,7 +301,7 @@ async function runChaosAssault() {
   }
 
   reports.push({
-    vector: "6. Auditoria de Reconciliação Contábil Global",
+    vector: "6. Reconciliação Contábil Individual das Carteiras",
     description: "Audita se a soma de todos os lançamentos do ledger bate exatamente com o saldo armazenado em cada carteira",
     passed: allReconciled,
     details: allReconciled
@@ -310,6 +310,36 @@ async function runChaosAssault() {
   });
   console.log(
     `   -> ${allReconciled ? "🛡️ AUDITORIA APROVADA" : "❌ INCONSISTÊNCIA DETECTADA"}: 100% das carteiras possuem soma de ledger == saldo com diferença de R$ 0.00!\n`
+  );
+
+  // -----------------------------------------------------------------------------------------
+  // ATAQUE 7: Auditoria Global de Partidas Dobradas (Double-Entry Bookkeeping Trial Balance)
+  // -----------------------------------------------------------------------------------------
+  console.log("🔥 [Ataque 7/7] Verificando Balancete Global de Partidas Dobradas (Trial Balance)...");
+  let trialBalancePassed = false;
+  let tbDetails = "";
+
+  try {
+    const tbRes = await fetch(`${BASE_URL}/accounting/trial-balance?currency=BRL`);
+    if (tbRes.ok) {
+      const tbData: any = await tbRes.json();
+      trialBalancePassed = tbData.balanced === true && tbData.discrepancy === "0.00";
+      tbDetails = `Débitos Totais: R$ ${tbData.totalDebits}, Créditos Totais: R$ ${tbData.totalCredits}, Discrepância: R$ ${tbData.discrepancy} (${tbData.totalTransactionsAudited} lançamentos auditados)`;
+    } else {
+      tbDetails = `Falha HTTP ao consultar trial-balance: ${tbRes.status}`;
+    }
+  } catch (err) {
+    tbDetails = `Erro ao auditar trial-balance: ${(err as Error).message}`;
+  }
+
+  reports.push({
+    vector: "7. Balancete Global de Partidas Dobradas (Trial Balance)",
+    description: "Comprova que a soma global de todos os débitos é rigorosamente igual à soma de créditos (Δ = 0.00)",
+    passed: trialBalancePassed,
+    details: trialBalancePassed ? `🛡️ APROVADO: ${tbDetails}` : `❌ FALHOU: ${tbDetails}`,
+  });
+  console.log(
+    `   -> ${trialBalancePassed ? "🛡️ AUDITORIA APROVADA" : "❌ INCONSISTÊNCIA DETECTADA"}: Balancete de partidas dobradas rigorosamente balanceado com Δ = 0.00!\n`
   );
 
   // -----------------------------------------------------------------------------------------
