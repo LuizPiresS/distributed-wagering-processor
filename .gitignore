@@ -1,0 +1,13 @@
+# Dependencies & Builds
+node_modules/
+dist/
+
+# Environment
+.env
+
+# Agent & IDE local configs
+.agents/
+.aops/
+.codex/
+.cursor/
+.gemini/

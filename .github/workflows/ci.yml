@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  verify:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun runtime
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Start containers (PostgreSQL 16 & MiniStack SQS)
+        run: docker compose up -d postgres ministack
+
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          until docker exec wagering-postgres pg_isready -U postgres -d wagering_db; do
+            echo "Aguardando inicializacao do PostgreSQL 16..."
+            sleep 1
+          done
+
+      - name: Install project dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Provision SQS FIFO Queues & DLQ
+        run: bun run init:queues
+
+      - name: Execute reversible MikroORM migrations
+        run: bun run migration:up
+
+      - name: Strict TypeScript compilation check
+        run: bun run build
+
+      - name: Run all unit and integration tests
+        run: bun run test:all
+
+      - name: Run 8 real concurrency chaos scenarios
+        run: bun run test:concurrency

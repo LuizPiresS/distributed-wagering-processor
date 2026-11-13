@@ -1,0 +1,44 @@
+{
+  "name": "distributed-wagering-processor",
+  "version": "1.0.0",
+  "description": "Distributed Wagering Processor for iGaming with strict financial consistency",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "bun run src/main.ts",
+    "start:dev": "bun --watch src/main.ts",
+    "start:prod": "bun run dist/src/main.js",
+    "test": "bun test tests/unit",
+    "test:integration": "bun test tests/integration",
+    "test:concurrency": "bun test tests/concurrency",
+    "test:all": "bun test",
+    "test:e2e": "bun run scripts/test-localhost-e2e.ts",
+    "test:chaos": "bun run scripts/chaos-attack-test.ts",
+    "test:load": "bun run scripts/load-test.ts",
+    "init:queues": "bun run scripts/init-queues.ts",
+    "migration:up": "bun run scripts/migrate.ts up",
+    "migration:down": "bun run scripts/migrate.ts down"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sqs": "^3.758.0",
+    "@mikro-orm/core": "^6.4.9",
+    "@mikro-orm/migrations": "^6.4.9",
+    "@mikro-orm/postgresql": "^6.4.9",
+    "@nestjs/common": "^11.0.11",
+    "@nestjs/core": "^11.0.11",
+    "@nestjs/platform-express": "^11.0.11",
+    "decimal.js": "^10.5.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.4",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.10",
+    "@types/pg": "^8.23.1",
+    "@types/uuid": "^10.0.0",
+    "pg": "^8.23.1",
+    "typescript": "^5.8.2"
+  }
+}
