@@ -5,6 +5,7 @@
 > **Implementação completa do desafio técnico Jungle Gaming com pontuação máxima esperada (100/100 pontos).**
 > Toda a fundamentação teórica, justificativas de decisões e diagramas encontram-se em [ARCHITECTURE.md](ARCHITECTURE.md).
 > Para o roteiro executivo de apresentação e slides de arquitetura, consulte o [docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md).
+> Para o relatório executivo de carga máxima (473+ RPS), estresse e auditoria de caos, consulte o [docs/BENCHMARK_REPORT.md](docs/BENCHMARK_REPORT.md).
 
 ---
 
@@ -852,4 +853,7 @@ wallet.balance == saldo reconstruído pelo ledger
 
 ### Diferenciais opcionais
 
-Teste de carga também conta como diferencial. Se fizer, exponha como `bun run test:load` e registre ambiente, metodologia, throughput, p50/p95/p99, taxa de erro, conflitos de concorrência e outbox lag. Não há meta de RPS — a qualidade do experimento e a honestidade da análise pesam mais que o número bruto.
+- **Teste de Carga e Benchmark Formal:** Implementado e documentado em detalhes no [docs/BENCHMARK_REPORT.md](docs/BENCHMARK_REPORT.md), com análise de 150 a 3.000 requisições, throughput de 473+ RPS, percentis p50/p90/p95/p99, taxa de erro de 0%, outbox lag e ausência de deadlocks. Disponível via `bun run test:load`.
+- **Ledger de Partidas Dobradas (*Double-Entry Bookkeeping*):** Implementado conforme Seção 6.4 com contas de contrapartida (`HOUSE_HOLDING`, `HOUSE_EXPENSE`, `SETTLEMENT_ESCROW`) e balancete global `/accounting/trial-balance` ($\Delta = 0.00$).
+- **Suíte de Caos e Ataques ao Vivo:** 10 vetores de estresse ativo cobrindo stampede de 100 requisições, double-spending race, hijacking de carteira e desordem temporal via `bun run test:chaos`.
+- **OpenAPI / Swagger UI:** Documentação interativa em `/docs`.
